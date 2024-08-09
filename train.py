@@ -18,6 +18,12 @@ def get_instance(module, name, config, *args):
 def main(config, resume):
     train_logger = Logger()
 
+    print('Available GPU devices:')
+    for device_id in range(torch.cuda.device_count()):
+        print(f'{device_id}: {torch.cuda.get_device_name(device_id)}')
+        print(f'  Memory Allocated: {math.ceil(torch.cuda.memory_allocated(device_id) / 1024**2)} MB')
+        print(f'  Memory Cached: {math.ceil(torch.cuda.memory_reserved(device_id) / 1024**2)} MB')
+
     # DATA LOADERS
     train_loader = get_instance(dataloaders, 'train_loader', config)
     val_loader = get_instance(dataloaders, 'val_loader', config)

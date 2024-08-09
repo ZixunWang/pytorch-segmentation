@@ -1,6 +1,10 @@
-torch==1.1.0          
-torchvision==0.3.0
-tqdm==4.32.2
-tensorboard==1.14.0
-Pillow==6.2.0
-opencv-python==4.1.0.25
+tqdm==4.62.3
+tensorboard==2.8.0
+Pillow>=9.2.0
+opencv-python==4.5.5.62
+numpy==1.21.4
+scipy==1.7.3
+scikit-learn==1.0.2
+scikit-image==0.19.1
+protobuf==3.19.5
+

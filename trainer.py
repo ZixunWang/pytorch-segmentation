@@ -81,19 +81,20 @@ class Trainer(BaseTrainer):
                 self.writer.add_scalar(f'{self.wrt_mode}/loss', loss.item(), self.wrt_step)
 
             # FOR EVAL
-            seg_metrics = eval_metrics(output, target, self.num_classes)
+            seg_metrics = eval_metrics(output.detach(), target, self.num_classes)
             self._update_seg_metrics(*seg_metrics)
-            pixAcc, mIoU, _ = self._get_seg_metrics().values()
+            # pixAcc, mIoU, _ = self._get_seg_metrics().values()
+            pixAcc, mIoU, mDice, cIoU, cDice = self._get_seg_metrics().values()
             
             # PRINT INFO
-            tbar.set_description('TRAIN ({}) | Loss: {:.3f} | Acc {:.2f} mIoU {:.2f} | B {:.2f} D {:.2f} |'.format(
-                                                epoch, self.total_loss.average, 
-                                                pixAcc, mIoU,
+            tbar.set_description('TRAIN ({}) Pred ({}) | Loss: {:.3f} | Acc {:.2f} mIoU {:.2f} mDice {:.2f} | B {:.2f} D {:.2f} |'.format(
+                                                epoch, self.config['predict']['train'], self.total_loss.average, 
+                                                pixAcc, mIoU, mDice,
                                                 self.batch_time.average, self.data_time.average))
 
         # METRICS TO TENSORBOARD
         seg_metrics = self._get_seg_metrics()
-        for k, v in list(seg_metrics.items())[:-1]: 
+        for k, v in list(seg_metrics.items())[:-2]: 
             self.writer.add_scalar(f'{self.wrt_mode}/{k}', v, self.wrt_step)
         for i, opt_group in enumerate(self.optimizer.param_groups):
             self.writer.add_scalar(f'{self.wrt_mode}/Learning_rate_{i}', opt_group['lr'], self.wrt_step)
@@ -128,39 +129,39 @@ class Trainer(BaseTrainer):
                     loss = loss.mean()
                 self.total_loss.update(loss.item())
 
-                seg_metrics = eval_metrics(output, target, self.num_classes)
+                seg_metrics = eval_metrics(output.detach(), target, self.num_classes)
                 self._update_seg_metrics(*seg_metrics)
 
                 # LIST OF IMAGE TO VIZ (15 images)
-                if len(val_visual) < 15:
-                    target_np = target.data.cpu().numpy()
-                    output_np = output.data.max(1)[1].cpu().numpy()
-                    val_visual.append([data[0].data.cpu(), target_np[0], output_np[0]])
+                # if len(val_visual) < 15:
+                #     target_np = target.data.cpu().numpy()
+                #     output_np = output.detach().data.max(1)[1].cpu().numpy()
+                #     val_visual.append([data[0].data.cpu(), target_np[0], output_np[0]])
 
                 # PRINT INFO
-                pixAcc, mIoU, _ = self._get_seg_metrics().values()
-                tbar.set_description('EVAL ({}) | Loss: {:.3f}, PixelAcc: {:.2f}, Mean IoU: {:.2f} |'.format( epoch,
-                                                self.total_loss.average,
-                                                pixAcc, mIoU))
+                pixAcc, mIoU, mDice, cIoU, cDice = self._get_seg_metrics().values()
+                tbar.set_description('EVAL ({}), Pred ({}) | Loss: {:.3f}, PixelAcc: {:.2f}, Mean IoU: {:.2f}, Mean Dice {:.2f} |'.format( epoch,
+                                                self.config['predict']['val'], self.total_loss.average,
+                                                pixAcc, mIoU, mDice))
 
             # WRTING & VISUALIZING THE MASKS
-            val_img = []
-            palette = self.train_loader.dataset.palette
-            for d, t, o in val_visual:
-                d = self.restore_transform(d)
-                t, o = colorize_mask(t, palette), colorize_mask(o, palette)
-                d, t, o = d.convert('RGB'), t.convert('RGB'), o.convert('RGB')
-                [d, t, o] = [self.viz_transform(x) for x in [d, t, o]]
-                val_img.extend([d, t, o])
-            val_img = torch.stack(val_img, 0)
-            val_img = make_grid(val_img.cpu(), nrow=3, padding=5)
-            self.writer.add_image(f'{self.wrt_mode}/inputs_targets_predictions', val_img, self.wrt_step)
+            # val_img = []
+            # palette = self.train_loader.dataset.palette
+            # for d, t, o in val_visual:
+            #     d = self.restore_transform(d)
+            #     t, o = colorize_mask(t, palette), colorize_mask(o, palette)
+            #     d, t, o = d.convert('RGB'), t.convert('RGB'), o.convert('RGB')
+            #     [d, t, o] = [self.viz_transform(x) for x in [d, t, o]]
+            #     val_img.extend([d, t, o])
+            # val_img = torch.stack(val_img, 0)
+            # val_img = make_grid(val_img.cpu(), nrow=3, padding=5)
+            # self.writer.add_image(f'{self.wrt_mode}/inputs_targets_predictions', val_img, self.wrt_step)
 
             # METRICS TO TENSORBOARD
             self.wrt_step = (epoch) * len(self.val_loader)
             self.writer.add_scalar(f'{self.wrt_mode}/loss', self.total_loss.average, self.wrt_step)
             seg_metrics = self._get_seg_metrics()
-            for k, v in list(seg_metrics.items())[:-1]: 
+            for k, v in list(seg_metrics.items())[:-2]: 
                 self.writer.add_scalar(f'{self.wrt_mode}/{k}', v, self.wrt_step)
 
             log = {
@@ -174,21 +175,36 @@ class Trainer(BaseTrainer):
         self.batch_time = AverageMeter()
         self.data_time = AverageMeter()
         self.total_loss = AverageMeter()
-        self.total_inter, self.total_union = 0, 0
-        self.total_correct, self.total_label = 0, 0
+        # self.total_inter, self.total_union = 0, 0
+        # self.total_correct, self.total_label = 0, 0
+        self.sPixAcc, self.sIoU, self.sDice, = [], [], []
+        self.smIoU, self.smDice = [], []
 
-    def _update_seg_metrics(self, correct, labeled, inter, union):
-        self.total_correct += correct
-        self.total_label += labeled
-        self.total_inter += inter
-        self.total_union += union
+    def _update_seg_metrics(self, pixAcc, mIoU, mDice, cIoU, cDice):
+        self.sPixAcc.extend(pixAcc)
+        self.sIoU.extend(cIoU)
+        self.sDice.extend(cDice)
+        self.smDice.extend(mDice)
+        self.smIoU.extend(mIoU)
 
     def _get_seg_metrics(self):
-        pixAcc = 1.0 * self.total_correct / (np.spacing(1) + self.total_label)
-        IoU = 1.0 * self.total_inter / (np.spacing(1) + self.total_union)
-        mIoU = IoU.mean()
+        # pixAcc = 1.0 * self.total_correct / (np.spacing(1) + self.total_label)
+        # IoU = 1.0 * self.total_inter / (np.spacing(1) + self.total_union)
+        # mIoU = IoU.mean()
+        # return {
+        #     "Pixel_Accuracy": np.round(pixAcc, 3),
+        #     "Mean_IoU": np.round(mIoU, 3),
+        #     "Class_IoU": dict(zip(range(self.num_classes), np.round(IoU, 3)))
+        # }
+        pixAcc = np.nanmean(self.sPixAcc)
+        IoU = np.nanmean(self.sIoU, axis=0)
+        Dice = np.nanmean(self.sDice, axis=0)
+        mIoU = np.nanmean(self.smIoU)
+        mDice = np.nanmean(self.smDice)
         return {
             "Pixel_Accuracy": np.round(pixAcc, 3),
             "Mean_IoU": np.round(mIoU, 3),
-            "Class_IoU": dict(zip(range(self.num_classes), np.round(IoU, 3)))
+            "Mean_Dice": np.round(mDice, 3),
+            "Class_IoU": dict(zip(range(self.num_classes), np.round(IoU, 3))),
+            "Class_Dice": dict(zip(range(self.num_classes), np.round(Dice, 3)))
         }

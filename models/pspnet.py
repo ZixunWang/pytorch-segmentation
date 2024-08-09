@@ -18,7 +18,7 @@ class _PSPModule(nn.Module):
             nn.Conv2d(in_channels+(out_channels * len(bin_sizes)), out_channels, 
                                     kernel_size=3, padding=1, bias=False),
             norm_layer(out_channels),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Dropout2d(0.1)
         )
 
@@ -26,7 +26,7 @@ class _PSPModule(nn.Module):
         prior = nn.AdaptiveAvgPool2d(output_size=bin_sz)
         conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         bn = norm_layer(out_channels)
-        relu = nn.ReLU(inplace=True)
+        relu = nn.ReLU(inplace=False)
         return nn.Sequential(prior, conv, bn, relu)
     
     def forward(self, features):
@@ -64,7 +64,7 @@ class PSPNet(BaseModel):
         self.auxiliary_branch = nn.Sequential(
             nn.Conv2d(m_out_sz//2, m_out_sz//4, kernel_size=3, padding=1, bias=False),
             norm_layer(m_out_sz//4),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Dropout2d(0.1),
             nn.Conv2d(m_out_sz//4, num_classes, kernel_size=1)
         )
@@ -124,9 +124,9 @@ class PSPDenseNet(BaseModel):
 
         if not pretrained or in_channels != 3:
             # If we're training from scratch, better to use 3x3 convs 
-            block0 = [nn.Conv2d(in_channels, 64, 3, stride=2, bias=False), nn.BatchNorm2d(64), nn.ReLU(inplace=True)]
+            block0 = [nn.Conv2d(in_channels, 64, 3, stride=2, bias=False), nn.BatchNorm2d(64), nn.ReLU(inplace=False)]
             block0.extend(
-                [nn.Conv2d(64, 64, 3, bias=False), nn.BatchNorm2d(64), nn.ReLU(inplace=True)] * 2
+                [nn.Conv2d(64, 64, 3, bias=False), nn.BatchNorm2d(64), nn.ReLU(inplace=False)] * 2
             )
             self.block0 = nn.Sequential(
                 *block0,
@@ -163,7 +163,7 @@ class PSPDenseNet(BaseModel):
         self.auxiliary_branch = nn.Sequential(
             nn.Conv2d(aux_out_sz, m_out_sz//4, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(m_out_sz//4),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.Dropout2d(0.1),
             nn.Conv2d(m_out_sz//4, num_classes, kernel_size=1)
         )
